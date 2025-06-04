@@ -1,27 +1,102 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react'; // useCallback eklendi
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LogOut,
   User,
   Settings,
-  // MoreHorizontal, // More ikonu kaldırıldı
-  // MessageSquare, // MessageSquare ikonu kaldırıldı
 } from 'lucide-react';
-// authStore importu takma ad (alias) kullanılarak güncellendi
 import { useAuthStore } from '@/stores/authStore';
-// import HomeIcon from '@/components/icons/HomeIcon'; // HomeIcon kaldırıldı
-// import TrophyIcon from '@/components/icons/TrophyIcon'; // TrophyIcon kaldırıldı
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'; // Bu takma adın çalıştığı varsayılıyor
-import { cn } from '@/lib/utils'; // Bu takma adın çalıştığı varsayılıyor
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
+
+// Navigasyon öğelerinin tipleri (isteğe bağlı ama yardımcı)
+interface NavItem {
+  id: string;
+  path: string;
+  label: string;
+  isDropdown?: boolean;
+}
 
 export const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut, isAdmin } = useAuthStore();
+
+  // Referanslar
+  const navRef = useRef<HTMLElement>(null); // Navigasyon kapsayıcısı
+  const navLinkRefs = useRef<(HTMLAnchorElement | HTMLButtonElement | null)[]>([]); // Linkler ve Butonlar
+
+  // Çubuk stili için durum
+  const [underlineStyle, setUnderlineStyle] = useState({
+    width: 0,
+    left: 0,
+    opacity: 0, // Başlangıçta görünmez
+  });
+
+  const navItems: NavItem[] = [ // ID'ler eklendi ve yapı biraz değiştirildi
+    { id: 'home', path: '/', label: 'Home' },
+    { id: 'chat', path: '/chat', label: 'Chat' },
+    { id: 'leaderboard', path: '/leaderboard', label: 'Leaderboard' },
+    { id: 'more', path: '#', label: 'More', isDropdown: true }, // "More" butonu için path şimdilik #
+  ];
+
+  // Aktif öğeyi ve fareyle üzerine gelinen öğeyi hesaplama ve çubuğu güncelleme
+  const updateUnderline = useCallback((targetElement: HTMLElement | null, isHover: boolean = false) => {
+    if (targetElement && navRef.current) {
+      const navRect = navRef.current.getBoundingClientRect();
+      const targetRect = targetElement.getBoundingClientRect();
+
+      setUnderlineStyle({
+        width: targetRect.width,
+        left: targetRect.left - navRect.left,
+        opacity: 1,
+      });
+    } else if (!isHover) { // Eğer hedef yoksa ve hover değilse (örn. sayfa ilk yüklendiğinde aktif link yoksa)
+      setUnderlineStyle(prev => ({ ...prev, opacity: 0 }));
+    }
+  }, []); // Bağımlılık dizisi boş, çünkü updateUnderline içindeki ref'ler değişmeyecek
+
+
+  useEffect(() => {
+    const activeItem = navItems.find(item => location.pathname === item.path && !item.isDropdown);
+    let activeElement: HTMLElement | null = null;
+
+    if (activeItem) {
+      const activeLinkIndex = navItems.findIndex(navItem => navItem.id === activeItem.id);
+      activeElement = navLinkRefs.current[activeLinkIndex] as HTMLElement | null;
+    }
+    updateUnderline(activeElement);
+  }, [location.pathname, navItems, updateUnderline]); // updateUnderline'ı bağımlılıklara ekle
+
+
+  const handleMouseEnter = (event: React.MouseEvent<HTMLAnchorElement | HTMLButtonElement>) => {
+    updateUnderline(event.currentTarget as HTMLElement, true);
+  };
+
+  const handleMouseLeave = () => {
+    // Fare ayrıldığında, alt çizgiyi aktif olan linke geri döndür
+    const activeItem = navItems.find(item => location.pathname === item.path && !item.isDropdown);
+    let activeElement: HTMLElement | null = null;
+    if (activeItem) {
+      const activeLinkIndex = navItems.findIndex(navItem => navItem.id === activeItem.id);
+      activeElement = navLinkRefs.current[activeLinkIndex] as HTMLElement | null;
+    }
+    // Eğer "More" butonu açıksa ve fare ayrıldıysa, "More" altında kalsın
+    const moreButtonIndex = navItems.findIndex(item => item.id === 'more');
+    const moreButtonElement = navLinkRefs.current[moreButtonIndex];
+    if (moreButtonElement && moreButtonElement.getAttribute('data-state') === 'open') {
+        updateUnderline(moreButtonElement as HTMLElement, true); // Onu aktif gibi göster
+        return;
+    }
+
+    updateUnderline(activeElement);
+  };
+
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -36,24 +111,14 @@ export const Navbar = () => {
     navigate('/');
   };
 
-  // Navigasyon linkleri/butonları için temel sınıflar
-  const baseInteractiveItemClasses = "flex items-center h-7 px-3 text-base font-medium transition-all duration-200 hover:text-primary";
-  // Aktif link için text rengi
+  const baseInteractiveItemClasses = "flex items-center h-7 px-3 text-base font-medium transition-colors duration-200 hover:text-primary focus:outline-none"; // focus:outline-none eklendi
   const activeParentLinkClasses = "text-primary";
   const inactiveParentLinkClasses = "text-white";
-
-  // Aktif durumdaki <span className="label"> için alt çizgi stili
-  const activeLabelUnderlineClasses = "relative after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[-3px] after:h-[2px] after:bg-primary";
-
-
-  // Dropdown menü öğeleri için temel sınıflar
   const baseDropdownItemClasses = "flex items-center gap-3 h-7 px-3 text-sm font-medium cursor-pointer";
 
   return (
-    // Header yüksekliği 110px, arka plan ve border yok.
     <header className="flex items-center h-[110px]">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4">
-        {/* Sol: Marka ve Navigasyon Linkleri */}
         <div className="flex items-center gap-4">
           <div className="flex items-center h-7">
             <span className="montserrat-black text-xl font-bold text-white select-none leading-7">
@@ -61,80 +126,78 @@ export const Navbar = () => {
             </span>
           </div>
 
-          <nav className="flex items-center gap-1">
-            <Link
-              to="/"
-              className={cn(
-                baseInteractiveItemClasses,
-                isActive('/') ? activeParentLinkClasses : inactiveParentLinkClasses
-              )}
-            >
-              <span className={cn("label", isActive('/') ? activeLabelUnderlineClasses : "")}>
-                Home
-              </span>
-            </Link>
-
-            <Link
-              to="/chat"
-              className={cn(
-                baseInteractiveItemClasses,
-                isActive('/chat') ? activeParentLinkClasses : inactiveParentLinkClasses
-              )}
-            >
-              <span className={cn("label", isActive('/chat') ? activeLabelUnderlineClasses : "")}>
-                Chat
-              </span>
-            </Link>
-
-            <Link
-              to="/leaderboard"
-              className={cn(
-                baseInteractiveItemClasses,
-                isActive('/leaderboard') ? activeParentLinkClasses : inactiveParentLinkClasses
-              )}
-            >
-              <span className={cn("label", isActive('/leaderboard') ? activeLabelUnderlineClasses : "")}>
-                Leaderboard
-              </span>
-            </Link>
-
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <button
+          {/* Navigasyon Kapsayıcısı */}
+          <nav className="relative flex items-center gap-1" ref={navRef} onMouseLeave={handleMouseLeave}>
+            {navItems.map((item, index) => {
+              if (item.isDropdown) {
+                return (
+                  <DropdownMenu key={item.id} modal={false}>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        ref={el => navLinkRefs.current[index] = el}
+                        onMouseEnter={handleMouseEnter}
+                        // onMouseLeave={handleMouseLeave} // Kapsayıcı nav elementine taşındı
+                        className={cn(
+                          baseInteractiveItemClasses,
+                          inactiveParentLinkClasses, // More her zaman başlangıçta inactive görünecek
+                          'data-[state=open]:text-primary',
+                          "relative" // Group kaldırıldı, artık gerek yok
+                        )}
+                      >
+                        <span className="label">{item.label}</span>
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      side="bottom"
+                      align="center"
+                      sideOffset={8}
+                      className="bg-popover border-gray-800 text-popover-foreground w-auto p-1"
+                    >
+                      <DropdownMenuItem
+                        onClick={handleAdminClick}
+                        disabled={!isAdmin}
+                        className={cn(
+                          baseDropdownItemClasses,
+                          'text-white hover:!bg-sidebar-accent focus:!bg-sidebar-accent',
+                          !isAdmin && 'cursor-not-allowed opacity-50'
+                        )}
+                      >
+                        <Settings className="h-4 w-4" />
+                        Admin Panel
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
+              return (
+                <Link
+                  key={item.id}
+                  ref={el => navLinkRefs.current[index] = el}
+                  to={item.path}
+                  onMouseEnter={handleMouseEnter}
+                  // onMouseLeave={handleMouseLeave} // Kapsayıcı nav elementine taşındı
                   className={cn(
                     baseInteractiveItemClasses,
-                    inactiveParentLinkClasses, // "More" butonu için varsayılan renk
-                    'data-[state=open]:text-primary' // Dropdown açıldığında primary renk
+                    isActive(item.path) ? activeParentLinkClasses : inactiveParentLinkClasses,
+                    "relative" // Group kaldırıldı
                   )}
                 >
-                  {/* "More" butonu için aktif alt çizgi uygulanmadı, istenirse eklenebilir */}
-                  <span className="label">More</span>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="bottom"
-                align="center"
-                sideOffset={8}
-                className="bg-popover border-gray-800 text-popover-foreground w-auto p-1"
-              >
-                <DropdownMenuItem
-                  onClick={handleAdminClick}
-                  disabled={!isAdmin}
-                  className={cn(
-                    baseDropdownItemClasses,
-                    'text-white hover:!bg-sidebar-accent focus:!bg-sidebar-accent',
-                    !isAdmin && 'cursor-not-allowed opacity-50'
-                  )}
-                >
-                  <Settings className="h-4 w-4" />
-                  Admin Panel
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <span className="label">{item.label}</span>
+                </Link>
+              );
+            })}
+            {/* Hareketli Alt Çizgi */}
+            <span
+              className="absolute bottom-[-3px] h-[2px] bg-primary transition-all duration-300 ease-out"
+              style={{
+                width: `${underlineStyle.width}px`,
+                transform: `translateX(${underlineStyle.left}px)`,
+                opacity: underlineStyle.opacity,
+              }}
+            />
           </nav>
         </div>
 
-        {/* Sağ: Kullanıcı Profili */}
         <div className="flex items-center h-7">
           {user ? (
             <DropdownMenu modal={false}>
@@ -172,8 +235,10 @@ export const Navbar = () => {
                   )}
                 >
                   <Link to={`/profile/${user.user_metadata?.username}`}>
-                    <User className="h-4 w-4" />
-                    Profile
+                    <span className="flex items-center gap-3">
+                      <User className="h-4 w-4" />
+                      Profile
+                    </span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem
